@@ -9,34 +9,22 @@ use Illuminate\Support\Facades\Log;
 class DocxMustache
 {
     public $items;
-    public $word_doc;
+    public $word_doc = false;
     public $template_file_name;
     public $template_file;
     public $local_path;
-    public $storageDisk;
-    public $storagePathPrefix;
+    public $storageDisk = 'local'; //name of disk for storage
+    public $storagePathPrefix = 'app/'; //prefix within your storage path
     public $zipper;
-    public $imageManipulation;
-    public $verbose;
+    public $imageManipulation; //if you use img urls that support manipulation via parameter ('&w=1800')
+    public $verbose = false;
 
     public function __construct($items, $local_template_file)
     {
         $this->items = $items;
         $this->template_file_name = basename($local_template_file);
         $this->template_file = $local_template_file;
-        $this->word_doc = false;
         $this->zipper = new \Chumper\Zipper\Zipper();
-
-        //name of disk for storage
-        $this->storageDisk = 'local';
-
-        //prefix within your storage path
-        $this->storagePathPrefix = 'app/';
-
-        //if you use img urls that support manipulation via parameter
-        $this->imageManipulation = ''; //'&w=1800';
-
-        $this->verbose = false;
     }
 
     public function Execute($dpi=72)
@@ -50,7 +38,7 @@ class DocxMustache
      */
     public function StoragePath($file)
     {
-        return storage_path($file);
+        return storage_path($this->storagePathPrefix.$file); // return storage_path($file);
     }
 
     /**
@@ -70,7 +58,7 @@ class DocxMustache
         $now = time();
         $isExpired = ($now - (60 * 240));
         $disk = \Storage::disk($this->storageDisk);
-        $all_dirs = $disk->directories($this->storagePathPrefix.'DocxMustache');
+        $all_dirs = $disk->directories('DocxMustache');
         foreach ($all_dirs as $dir) {
             //delete dirs older than 20min
             if ($disk->lastModified($dir) < $isExpired) {
@@ -82,8 +70,8 @@ class DocxMustache
     public function GetTmpDir()
     {
         $this->CleanUpTmpDirs();
-        $path = $this->storagePathPrefix.'DocxMustache/'.uniqid($this->template_file).'/';
-        \File::makeDirectory($this->StoragePath($path), 0775, true);
+        $path = 'DocxMustache/'.uniqid($this->template_file_name).'/';
+        \File::makeDirectory(self::StoragePath($path), 0775, true);
 
         return $path;
     }
@@ -92,13 +80,13 @@ class DocxMustache
     {
         $this->Log('Get Copy of Template');
         $this->local_path = $this->GetTmpDir();
-        \Storage::disk($this->storageDisk)->copy($this->storagePathPrefix.$this->template_file, $this->local_path.$this->template_file_name);
+        \Storage::disk($this->storageDisk)->copy($this->template_file_name, $this->local_path.$this->template_file_name);
     }
 
     protected function exctractOpenXmlFile($file)
     {
-        $this->zipper->make($this->StoragePath($this->local_path.$this->template_file_name))
-            ->extractTo($this->StoragePath($this->local_path), [$file], \Chumper\Zipper\Zipper::WHITELIST);
+        $this->zipper->make(self::StoragePath($this->local_path.$this->template_file_name))
+            ->extractTo(self::StoragePath($this->local_path), [$file], \Chumper\Zipper\Zipper::WHITELIST);
     }
 
     protected function ReadOpenXmlFile($file, $type = 'file')
@@ -111,7 +99,7 @@ class DocxMustache
                 throw new Exception('Cannot not read file '.$file);
             }
         } else {
-            if ($xml_object = simplexml_load_file($this->StoragePath($this->local_path.$file))) {
+            if ($xml_object = simplexml_load_file(self::StoragePath($this->local_path.$file))) {
                 return $xml_object;
             } else {
                 throw new Exception('Cannot load XML Object from file '.$file);
@@ -126,10 +114,10 @@ class DocxMustache
         //add new content to word doc
         if ($folder) {
             $this->zipper->folder($folder)
-                ->add($this->StoragePath($this->local_path.$file));
+                ->add(self::StoragePath($this->local_path.$file));
         } else {
             $this->zipper
-                ->add($this->StoragePath($this->local_path.$file));
+                ->add(self::StoragePath($this->local_path.$file));
         }
     }
 
@@ -473,9 +461,9 @@ class DocxMustache
             '--headless',
             '--convert-to',
             'pdf',
-            $this->StoragePath($this->local_path.$this->template_file_name),
+            self::StoragePath($this->local_path.$this->template_file_name),
             '--outdir',
-            $this->StoragePath($this->local_path),
+            self::StoragePath($this->local_path),
         ]);
         $process->start();
         while ($process->isRunning()) {
@@ -485,9 +473,9 @@ class DocxMustache
         if (! $process->isSuccessful()) {
             throw new \Symfony\Component\Process\Exception\ProcessFailedException($process);
         } else {
-            $path_parts = pathinfo($this->StoragePath($this->local_path.$this->template_file_name));
+            $path_parts = pathinfo(self::StoragePath($this->local_path.$this->template_file_name));
 
-            return $this->StoragePath($this->local_path.$path_parts['filename'].'pdf');
+            return self::StoragePath($this->local_path.$path_parts['filename'].'pdf');
         }
     }
-}
+} 
